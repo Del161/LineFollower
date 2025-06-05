@@ -1,27 +1,30 @@
+"""
+Python code for communicatin with a hardware in the loop esp32
+this code functions as the sensors and the motor drivers for 
+the esp to communicate with
+"""
+
+
 from controller import Robot
-import numpy as np
 import heapq
 import matplotlib.pyplot as plt
 import numpy as np
 from Dijkstra_webot import dijkstra, plot_grid, create_grid
 
-#visualize an example map for control
-
-
-
-
 # the starting position of the robot on the grid and the
-# grid position where you want to end up       
-start =  (12, 16)
-goal = (0, 0)
+# grid position where you want to end up   
+# row horizontal then column such as 11,13 11,17   
+start =  (11, 13)
+goal = (1, 1)
 
-# creates the grid
-grid = create_grid()
-# calculate the path !!only for visual, not for actual pathfinding!!
-path = dijkstra(grid, start, goal)
-# Visualize the Path overlayed on the map
-plot_grid(grid, path)
-plt.show()
+# for debugging plots
+#grid = create_grid()
+## calculate the path !!only for visual, not for actual pathfinding!!
+#path = dijkstra(grid, start, goal)
+## Visualize the Path overlayed on the map
+#plot_grid(grid, path)
+#plt.show()
+
 #-------------------------------------------------------
 # Open serial port to communicate with the microcontroller
 
@@ -72,16 +75,13 @@ rightMotor.setPosition(float('inf'))
 leftMotor.setVelocity(0.0)
 rightMotor.setVelocity(0.0)
 
+direction = "straight"
 #-------------------------------------------------------
 # Main loop:
-# perform simulation steps until Webots is stopping the controller
-# Implements the see-think-act cycle
-
 while robot.step(timestep) != -1:
 
-    ############################################
-    #                  See                     #
-    ############################################
+    timestep = int(robot.getBasicTimeStep())   # [ms]
+    delta_t = timestep/1000.0    # [s]
 
     # Update sensor readings
     gsValues = []
@@ -111,15 +111,15 @@ while robot.step(timestep) != -1:
     msg_bytes = bytes(message + '\n', 'UTF-8')
     
 
-    ############################################
-    #                 Think                    #
-    ############################################
-
+    # the following part of the code communicated with the esp32
     # Serial communication: if something is received, then update the current state
     if ser.in_waiting:
         value = str(ser.readline(), 'UTF-8')[:-1]  # ignore the last character
-        current_state = value
+        messages = value.split()
+        current_state = messages[0]
+        direction =  messages[1]
 
+    # the following code works as the motor drivers
     # Update speed according to the current state
     if current_state == 'forward':
         leftSpeed = speed
@@ -136,18 +136,24 @@ while robot.step(timestep) != -1:
     if current_state == 'stop':
         leftSpeed = 0.0
         rightSpeed = 0.0
+        # this creates a map of the path taken after finishing
+        # creates the grid
+        grid = create_grid()
+        # calculate the path !!only for visual, not for actual pathfinding!!
+        path = dijkstra(grid, start, goal)
+        # Visualize the Path overlayed on the map
+        plot_grid(grid, path)
+        plt.show()
 
 
-    ############################################
-    #                  Act                     #
-    ############################################
 
+    # this sets the speed of the motors based on the state from the esp
     # Update velocity commands for the motors
     leftMotor.setVelocity(leftSpeed)
     rightMotor.setVelocity(rightSpeed)
    
     # Print sensor message and current state for debugging
-    print(f'Sensor message: {msg_bytes} - Current state: {current_state}')
+    print(f'Sensor message: {msg_bytes} - Current state: {current_state} - Direction: {direction}')
 
     # Send message to the microcontroller 
     ser.write(msg_bytes)  
